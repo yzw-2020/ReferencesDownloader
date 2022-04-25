@@ -95,7 +95,8 @@ class ReferencesDownloader:
 
 
     def get_bib(self, *keywords):
-        keywords = [re.sub(r"and", " ", key).sub(r" +", "+", key) for key in keywords]
+        keywords = [re.sub(r"and", " ", key) for key in keywords]
+        keywords = [re.sub(r" +", "+", key) for key in keywords]
         response = requests.get(self.api_url.format('+'.join(keywords)))
         if response.text and response.status_code == 200:
                 return response.text
