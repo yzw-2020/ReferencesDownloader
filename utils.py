@@ -1,9 +1,10 @@
+import asyncio
 import hashlib
 import re
-from datetime import datetime
 import tkinter as tk
+from datetime import datetime
 from tkinter import filedialog, messagebox
-import asyncio
+
 import requests
 import threadpool
 from pdfminer.converter import PDFPageAggregator
@@ -108,7 +109,7 @@ class ReferencesDownloader:
                 response = requests.get(self.api_url.format('+'.join(keywords)))
                 retry += 1
                 if retry > 3:
-                    response.text = "Server Error! Code:"+response.status_code
+                    response.text = "Server Error! Code:" + str(response.status_code)
                     break         
             if response.text:
                 return response
@@ -123,7 +124,7 @@ class MY_GUI():
         self.References_Downloader = ReferencesDownloader()
         self.cache = {}
         self.bib_result = {}
-        self.pool = threadpool.ThreadPool(32)
+        self.pool = threadpool.ThreadPool(16)
         self.window = window
 
 
@@ -133,7 +134,14 @@ class MY_GUI():
         self.window["bg"] = "#EEEEEE"
         self.window.attributes("-alpha", 1)
         # 菜单栏
-        self.init_menu()
+        self.menu = tk.Menu(self.window)
+        self.menu_f = tk.Menu(self.menu, tearoff=False)
+        self.menu_f.add_command(label="Open File", command=self.open_file)
+        self.menu_f.add_command(label="Open Files", command=self.open_files)
+        self.menu_f.add_command(label="Exit", command=self.window.quit)
+        self.menu.add_cascade(label="File", menu=self.menu_f)
+        self.menu.add_command(label="Help", command=self.help)
+        self.window["menu"] = self.menu
 
         # 文件选择栏
         self.files_label = tk.Label(self.window, text="Files")
@@ -205,15 +213,6 @@ class MY_GUI():
         self.switch_button.place(relx=0.36, rely=0.65, relwidth=0.08)
 
 
-    def init_menu(self):
-        self.menu = tk.Menu(self.window)
-        self.menu_f = tk.Menu(self.menu, tearoff=False)
-        self.menu_f.add_command(label="Open File", command=self.open_file)
-        self.menu_f.add_command(label="Open Files", command=self.open_files)
-        self.menu_f.add_command(label="Exit", command=self.window.quit)
-        self.menu.add_cascade(label="File", menu=self.menu_f)
-        self.menu.add_command(label="Help", command=self.help)
-        self.window["menu"] = self.menu
 
 
     def help(self):
@@ -278,7 +277,7 @@ class MY_GUI():
         return s
 
 
-    async def download(self):
+    def download(self):
         filename = self.get_active_file()
         bibs = self._download(filename)
         self.bib_result[filename] = bibs
