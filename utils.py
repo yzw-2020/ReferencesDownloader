@@ -26,16 +26,7 @@ def get_pages(filename, password='', page_numbers=None, maxpages=0, caching=True
             interpreter.process_page(page)
             yield device.get_result()
 
-def nowait(function):
-    pool = threadpool.ThreadPool(4)
-    @wraps(function)
-    def func(self, *args, **kwargs):
-        def func1(*args,**kwargs):
-            return function(self,*args,**kwargs)
-        for i in threadpool.makeRequests(func1,args_list=((args,kwargs),)):
-            pool.putRequest(i)
-        pool.poll()
-    return func
+
 
 class ReferencesDownloader:
     api_url = "https://dblp.org/search/publ/api?q={}&h=5&format=bib1&rd=1a"
@@ -126,6 +117,17 @@ class ReferencesDownloader:
     def clean_cache(self):
         self.refs_dict.clear()
 
+def nowait(function):
+    """"""
+    pool = threadpool.ThreadPool(4)
+    @wraps(function)
+    def func(self, *args, **kwargs):
+        def func1(*args,**kwargs):
+            return function(self,*args,**kwargs)
+        for i in threadpool.makeRequests(func1,args_list=((args,kwargs),)):
+            pool.putRequest(i)
+        pool.poll()
+    return func
 
 class MY_GUI():
     def __init__(self, window: tk.Tk):
@@ -141,7 +143,7 @@ class MY_GUI():
         self.window.resizable(False, False)
         self.window["bg"] = "#EEEEEE"
         self.window.attributes("-alpha", 1)
-        # 菜单栏
+        # Menu Bar
         self.menu = tk.Menu(self.window)
         self.menu_f = tk.Menu(self.menu, tearoff=False)
         self.menu_f.add_command(label="Open File", command=self.open_file)
@@ -150,8 +152,7 @@ class MY_GUI():
         self.menu.add_cascade(label="File", menu=self.menu_f)
         self.menu.add_command(label="Help", command=self.help)
         self.window["menu"] = self.menu
-
-        # 文件选择栏
+        # File
         self.files_label = tk.Label(self.window, text="Files")
         self.files_label.place(relx=0.01, y=0)
         self.frame_files = tk.Frame(self.window)
@@ -165,8 +166,8 @@ class MY_GUI():
         self.files_scroll_bar_y = tk.Scrollbar(self.frame_files, orient="vertical", command=self.files_box.yview)
         self.files_scroll_bar_y.place(relx=0.95, rely=0, relheight=1, relwidth=0.05)
         self.files_box.config(yscrollcommand=self.files_scroll_bar_y.set)
-        # 日志栏
-        self.log_label = tk.Label(self.window, text="log")
+        # Log
+        self.log_label = tk.Label(self.window, text="Log")
         self.log_label.place(relx=0.01, rely=0.7)
         self.frame_log = tk.Frame(self.window)
         self.frame_log.place(relx=0.01, rely=0.73, relheight=0.26, relwidth=0.44)
@@ -178,7 +179,7 @@ class MY_GUI():
         self.log_scroll_bar_y = tk.Scrollbar(self.frame_log, orient="vertical", command=self.log_box.yview)
         self.log_scroll_bar_y.place(relx=0.95, rely=0, relheight=1, relwidth=0.05)
         self.log_box.config(yscrollcommand=self.log_scroll_bar_y.set)
-        # 参考文献
+        # References
         self.references_label = tk.Label(self.window, text="References")
         self.references_label.place(relx=0.45, y=0)
         self.frame_references = tk.Frame(self.window)
@@ -192,7 +193,7 @@ class MY_GUI():
         self.references_scroll_bar_y.place(relx=0.97, rely=0, relheight=1, relwidth=0.03)
         self.references_box.config(yscrollcommand=self.references_scroll_bar_y.set)
         self.current_show = self.frame_references
-        # 结果
+        # Result
         self.result_label = tk.Label(self.window, text="result")
         self.frame_result = tk.Frame(self.window)
         self.result_box = tk.Text(self.frame_result)
@@ -203,8 +204,7 @@ class MY_GUI():
         self.result_scroll_bar_y = tk.Scrollbar(self.frame_result, orient="vertical", command=self.result_box.yview)
         self.result_scroll_bar_y.place(relx=0.97, rely=0, relheight=1, relwidth=0.03)
         self.result_box.config(yscrollcommand=self.result_scroll_bar_y.set)
-
-        # 功能按钮
+        # Function Botton
         self.analyze_button = tk.Button(self.window, text="Analyze", width=10, command=self.analyze)
         self.analyze_button.place(relx=0.36, rely=0.05, relwidth=0.08)
         self.analyze_all_button = tk.Button(self.window, text="Analyze All", width=10, command=self.analyze_all)
@@ -222,21 +222,24 @@ class MY_GUI():
 
 
 
-
     def help(self):
-        msg = """
-        File: Open File 打开单个文件
-        File: Open Files 打开多个文件
-        File: Exit 退出程序
-        Help: 显示帮助信息
-        Analyze: 解析选中文件, 并在右侧显示
-        Analyze All: 解析所有文件, 将选中的文件显示在右侧
-        Clean: 清除缓存, 下次分析、下载时将重新进行
-        Download: 根据解析出来的结果, 下载对应论文的bib格式数据
-        Remove: 将打开的文件关掉，右侧清空
-        Save: 将下载的数据保存到某个文件
-        Switch: 切换显示论文中的参考文献或下载得到的数据
-        
+        msg = \
+        """
+        File: Open File -> open single file
+        File: Open Files -> open muti files
+        File: Exit -> exit program
+        Help: show help
+        Analyze: analyze selected file, show in references box
+        Analyze All: analyze all files, show selected file
+        Clean: clean cache
+        Download: according to analyzed file, download bib form dblp
+        Remove: close selected file, clear references and downloaded result
+        Save: save downloaded result into file
+        Switch: witch current show content,form references to result or from result to references
+        UI: File -> show opened file,double click to switch file to show
+        UI: Log -> show logs
+        UI: References  > show analyze result
+        UI: Result -> show Download result
         """
         messagebox.showinfo(title="Help", message=msg)
 
