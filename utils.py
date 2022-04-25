@@ -1,10 +1,8 @@
-import asyncio
-import hashlib
 import re
 import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, messagebox
-
+from functools import wraps
 import requests
 import threadpool
 from pdfminer.converter import PDFPageAggregator
@@ -28,6 +26,16 @@ def get_pages(filename, password='', page_numbers=None, maxpages=0, caching=True
             interpreter.process_page(page)
             yield device.get_result()
 
+def nowait(function):
+    pool = threadpool.ThreadPool(4)
+    @wraps(function)
+    def func(self, *args, **kwargs):
+        def func1(*args,**kwargs):
+            return function(self,*args,**kwargs)
+        for i in threadpool.makeRequests(func1,args_list=((args,kwargs),)):
+            pool.putRequest(i)
+        pool.poll()
+    return func
 
 class ReferencesDownloader:
     api_url = "https://dblp.org/search/publ/api?q={}&h=5&format=bib1&rd=1a"
@@ -89,12 +97,12 @@ class ReferencesDownloader:
     def get_bib(self, *keywords):
         keywords = [key.replace(" ","+") for key in keywords]
         response = requests.get(self.api_url.format('+'.join(keywords)))
-        if response.text:
-                return response
+        if response.text and response.status_code == 200:
+                return response.text
         keywords.pop()
         response = requests.get(self.api_url.format('+'.join(keywords)))
-        if response.text:
-                return response
+        if response.text and response.status_code == 200:
+                return response.text
         keywords = "+".join(keywords).split("+")
         while True:
             if keywords:
@@ -109,10 +117,9 @@ class ReferencesDownloader:
                 response = requests.get(self.api_url.format('+'.join(keywords)))
                 retry += 1
                 if retry > 3:
-                    response.text = "Server Error! Code:" + str(response.status_code)
-                    break         
+                    return "Server Error! Code:" + str(response.status_code)     
             if response.text:
-                return response
+                return response.text
 
 
     def clean_cache(self):
@@ -255,7 +262,7 @@ class MY_GUI():
         except Exception as e:
             messagebox.showerror("Error",str(e))
             return self.log(filename + " analyze failed ")
-        self.log(filename + " analyze successed ")
+        self.log(filename + " analyze success ")
         self.refresh()
 
 
@@ -267,8 +274,8 @@ class MY_GUI():
             return ref,bib
         refs = list(RD.get_refs(filename))
         result = {}
-        def callback(workrequest,res):
-            result[res[0]] = "None" if res[1] is None else res[1].text
+        def callback(x,res):
+            result[res[0]] = "None" if res[1] is None else res[1]
         reqs = threadpool.makeRequests(get_bib, refs, callback)
         for req in reqs:
             self.pool.putRequest(req)
@@ -276,9 +283,12 @@ class MY_GUI():
         s = "".join(["%s\n%s\n" %(ref,result[ref]) for ref in refs])
         return s
 
-
+    @nowait
     def download(self):
         filename = self.get_active_file()
+        if filename is None:
+            return
+        self.log("downloading ")
         bibs = self._download(filename)
         self.bib_result[filename] = bibs
         try:
@@ -286,14 +296,17 @@ class MY_GUI():
         except:
             pass
         self.result_box.insert("end", bibs)
-        self.log("download successed ")
-        return bibs
+        self.log("download success ")
 
     def save(self):
         filename = self.get_active_file()
         bibs = self.bib_result.get(filename, None)
         if bibs is None:
-            bibs = self.download()
+            return messagebox.showinfo("没有下载bib")
+        file = filedialog.asksaveasfilename()
+        with open(file,"w") as f:
+            f.write(bibs)
+        self.log("save as "+file+" success")            
 
 
     def remove(self):
@@ -309,7 +322,7 @@ class MY_GUI():
         self.References_Downloader.clean_cache()
         self.cache.clear()
         self.bib_result.clear()
-        self.log("cache Cleaned ")
+        self.log("cache cleaned ")
         self.refresh()
 
 
