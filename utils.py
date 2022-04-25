@@ -90,12 +90,12 @@ class ReferencesDownloader:
 
 
     def ref_to_keys(self, ref):
-        return [i.strip() for i in re.sub(r"^\[[0-9]+]", "", ref).strip(' .').split('.')]
+        return [i.strip() for i in re.sub(r"^\[[0-9]+]", "", ref).replace(",", " ").strip(' .').split('.')]
 
 
 
     def get_bib(self, *keywords):
-        keywords = [key.replace(" ","+") for key in keywords]
+        keywords = [re.sub(r" +", "+", key) for key in keywords]
         response = requests.get(self.api_url.format('+'.join(keywords)))
         if response.text and response.status_code == 200:
                 return response.text
@@ -110,15 +110,13 @@ class ReferencesDownloader:
             else:
                 return
             if len(keywords)<4:
+                if response.status_code != 200:
+                    return "Server Error! Code:" + str(response.status_code) 
                 return
-            response = requests.get(self.api_url.format('+'.join(keywords)))
-            retry = 0
-            while response.status_code != 200:
-                response = requests.get(self.api_url.format('+'.join(keywords)))
-                retry += 1
-                if retry > 3:
-                    return "Server Error! Code:" + str(response.status_code)     
-            if response.text:
+            url = self.api_url.format('+'.join(keywords))
+            print(url)
+            response = requests.get(url)
+            if response.text and response.status_code==200:
                 return response.text
 
 
@@ -289,7 +287,12 @@ class MY_GUI():
         if filename is None:
             return
         self.log("downloading ")
-        bibs = self._download(filename)
+        try:
+            bibs = self._download(filename)
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+            self.log("download failed ")
+            return
         self.bib_result[filename] = bibs
         try:
             self.result_box.delete(0, "end")
@@ -302,7 +305,7 @@ class MY_GUI():
         filename = self.get_active_file()
         bibs = self.bib_result.get(filename, None)
         if bibs is None:
-            return messagebox.showinfo("没有下载bib")
+            return messagebox.showinfo("tip", "没有下载bib")
         file = filedialog.asksaveasfilename()
         with open(file,"w") as f:
             f.write(bibs)
