@@ -45,12 +45,12 @@ class ReferencesDownloader:
             for elem in elems[-2::-1]:
                 string = elem.get_text()
                 if re.match(r'^references\n', string.lower()):
-                    return self.merge_refs(result)
+                    return self._merge_refs(result)
                 for s in reversed(string.strip('\n ').replace('-\n', '').split('\n')):
                     result.append(s.strip())
 
 
-    def merge_refs(self, res):
+    def _merge_refs(self, res):
         refs = []
         for i in reversed(res):
             if re.match(r"^\[[0-9]+]", i):
@@ -66,7 +66,7 @@ class ReferencesDownloader:
                 yield ref
             return
         self.refs = self._get_refs(filename, password, page_numbers,maxpages, caching, laparams)
-        self.modify_refs()
+        self._modify_refs()
         if not self.refs:
             raise Exception("References not found")
         if self.caching:
@@ -75,7 +75,7 @@ class ReferencesDownloader:
             yield ref
 
 
-    def modify_refs(self):
+    def _modify_refs(self):
         for i,ref in enumerate(self.refs):
             self.refs[i] = re.sub(r".[0-9,， ]+$",".",ref)
 
@@ -352,10 +352,10 @@ class MY_GUI():
 
 
     def log(self,string: str):
-        self.log_box.insert("end", self.get_str_time()+string)
+        self.log_box.insert("end", self._get_str_time()+string)
         self.log_box.yview_moveto(1)
     
-    def get_str_time(self):
+    def _get_str_time(self):
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S ")
 
 
