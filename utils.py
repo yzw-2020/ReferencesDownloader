@@ -3,7 +3,7 @@ import re
 from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog, messagebox
-
+import asyncio
 import requests
 import threadpool
 from pdfminer.converter import PDFPageAggregator
@@ -29,14 +29,13 @@ def get_pages(filename, password='', page_numbers=None, maxpages=0, caching=True
 
 
 class ReferencesDownloader:
-    api_url = "https://dblp.org/search/publ/api?q={}&h=1000&format=bib1&rd=1a"
+    api_url = "https://dblp.org/search/publ/api?q={}&h=5&format=bib1&rd=1a"
 
     def __init__(self, caching=True):
         self.caching = caching
         if caching:
             self.refs_dict = {}
 
-        self.pool = threadpool.ThreadPool(16)
 
     def _get_refs(self, filename, password='', page_numbers=None, maxpages=0, caching=True, laparams=None):
         result = []
@@ -50,6 +49,7 @@ class ReferencesDownloader:
                 for s in reversed(string.strip('\n ').replace('-\n', '').split('\n')):
                     result.append(s.strip())
 
+
     def merge_refs(self, res):
         refs = []
         for i in reversed(res):
@@ -58,6 +58,7 @@ class ReferencesDownloader:
             elif refs:
                 refs[-1] += ' ' + i
         return refs
+
 
     def get_refs(self, filename, password='', page_numbers=None, maxpages=0, caching=True, laparams=None):
         if self.caching and filename in self.refs_dict:
@@ -73,17 +74,17 @@ class ReferencesDownloader:
         for ref in self.refs.copy():
             yield ref
 
+
     def modify_refs(self):
         for i,ref in enumerate(self.refs):
             self.refs[i] = re.sub(r".[0-9,， ]+$",".",ref)
-    
-    
-    def refs_to_keys(self,*refs):
-        keys_list = []
-        for ref in refs:
-            keys_list.append([i.strip() for i in re.sub(r"^\[[0-9]+]", "", ref).strip(' .').split('.')])
-        return keys_list     
-    
+
+
+    def ref_to_keys(self, ref):
+        return [i.strip() for i in re.sub(r"^\[[0-9]+]", "", ref).strip(' .').split('.')]
+
+
+
     def get_bib(self, *keywords):
         keywords = [key.replace(" ","+") for key in keywords]
         response = requests.get(self.api_url.format('+'.join(keywords)))
@@ -99,22 +100,20 @@ class ReferencesDownloader:
                 keywords.pop()
             else:
                 return
+            if len(keywords)<4:
+                return
             response = requests.get(self.api_url.format('+'.join(keywords)))
+            retry = 0
+            while response.status_code != 200:
+                response = requests.get(self.api_url.format('+'.join(keywords)))
+                retry += 1
+                if retry > 3:
+                    response.text = "Server Error! Code:"+response.status_code
+                    break         
             if response.text:
                 return response
-            
-            
-    def download(self, filename):
-        keys_list = self.refs_to_keys(*self.get_refs(filename))
-        result = []
-        for keys in keys_list:
-            response = self.get_bib(*keys)
-            result.append(b"None" if response is None else response.content)
-        s = b""
-        for ref,res in zip(self.get_refs(filename), result):
-            s += b"%s\n%s\n" %(ref,res)
-        return s
-    
+
+
     def clean_cache(self):
         self.refs_dict.clear()
 
@@ -123,9 +122,10 @@ class MY_GUI():
     def __init__(self, window: tk.Tk):
         self.References_Downloader = ReferencesDownloader()
         self.cache = {}
-        self.threadpool = threadpool.ThreadPool(4)
+        self.bib_result = {}
+        self.pool = threadpool.ThreadPool(32)
         self.window = window
-        
+
 
         self.window.title("References Downloader")
         self.window.geometry("1280x720+40+40")
@@ -134,7 +134,7 @@ class MY_GUI():
         self.window.attributes("-alpha", 1)
         # 菜单栏
         self.init_menu()
-        
+
         # 文件选择栏
         self.files_label = tk.Label(self.window, text="Files")
         self.files_label.place(relx=0.01, y=0)
@@ -175,20 +175,35 @@ class MY_GUI():
         self.references_scroll_bar_y = tk.Scrollbar(self.frame_references, orient="vertical", command=self.references_box.yview)
         self.references_scroll_bar_y.place(relx=0.97, rely=0, relheight=1, relwidth=0.03)
         self.references_box.config(yscrollcommand=self.references_scroll_bar_y.set)
-    
+        self.current_show = self.frame_references
+        # 结果
+        self.result_label = tk.Label(self.window, text="result")
+        self.frame_result = tk.Frame(self.window)
+        self.result_box = tk.Text(self.frame_result)
+        self.result_box.place(relx=0 ,rely=0, relheight=0.97, relwidth=0.97)
+        self.result_scroll_bar_x = tk.Scrollbar(self.frame_result, orient="horizontal", command=self.result_box.xview)
+        self.result_scroll_bar_x.place(relx=0, rely=0.97, relheight=0.03, relwidth=1)
+        self.result_box.config(xscrollcommand=self.result_scroll_bar_x.set)
+        self.result_scroll_bar_y = tk.Scrollbar(self.frame_result, orient="vertical", command=self.result_box.yview)
+        self.result_scroll_bar_y.place(relx=0.97, rely=0, relheight=1, relwidth=0.03)
+        self.result_box.config(yscrollcommand=self.result_scroll_bar_y.set)
+
         # 功能按钮
         self.analyze_button = tk.Button(self.window, text="Analyze", width=10, command=self.analyze)
-        self.analyze_button.place(relx=0.36, rely=0.1, relwidth=0.08)
+        self.analyze_button.place(relx=0.36, rely=0.05, relwidth=0.08)
         self.analyze_all_button = tk.Button(self.window, text="Analyze All", width=10, command=self.analyze_all)
-        self.analyze_all_button.place(relx=0.36, rely=0.2, relwidth=0.08)
+        self.analyze_all_button.place(relx=0.36, rely=0.15, relwidth=0.08)
         self.show_button = tk.Button(self.window, text="Clean", width=10, command=self.clean)
-        self.show_button.place(relx=0.36,rely=0.3, relwidth=0.08)
+        self.show_button.place(relx=0.36,rely=0.25, relwidth=0.08)
         self.download_button = tk.Button(self.window, text="Download", width=10, command=self.download)
-        self.download_button.place(relx=0.36, rely=0.4, relwidth=0.08)
+        self.download_button.place(relx=0.36, rely=0.35, relwidth=0.08)
         self.remove_button = tk.Button(self.window, text="Remove", width=10, command=self.remove)
-        self.remove_button.place(relx=0.36, rely=0.5, relwidth=0.08)
+        self.remove_button.place(relx=0.36, rely=0.45, relwidth=0.08)
         self.save_button = tk.Button(self.window, text="Save", width=10, command=self.save)
-        self.save_button.place(relx=0.36, rely=0.6, relwidth=0.08)
+        self.save_button.place(relx=0.36, rely=0.55, relwidth=0.08)
+        self.switch_button = tk.Button(self.window, text="Switch", width=10, command=self.switch)
+        self.switch_button.place(relx=0.36, rely=0.65, relwidth=0.08)
+
 
     def init_menu(self):
         self.menu = tk.Menu(self.window)
@@ -200,31 +215,37 @@ class MY_GUI():
         self.menu.add_command(label="Help", command=self.help)
         self.window["menu"] = self.menu
 
+
     def help(self):
         msg = "help"
         messagebox.showinfo(title="Help", message=msg)
+
 
     def open_file(self):
         file = filedialog.askopenfilename()
         if file and file not in self.files_box.get(0,"end"):
             self.files_box.insert("end", file)
 
+
     def open_files(self):
         files = filedialog.askopenfilenames()
         for file in files:
             if file not in self.files_box.get(0,"end"):
                 self.files_box.insert("end", file)
-                
-    def analyze_all(self):
-        for filename in self.files_box.get(0,"end"):
-            self.analyze(filename)
-            
+
+
     def get_active_file(self):
         index = self.files_box.curselection()
         if not index:
             return
         return self.files_box.get(index[0])
-    
+
+
+    def analyze_all(self):
+        for filename in self.files_box.get(0,"end"):
+            self.analyze(filename)
+
+
     def analyze(self,filename=None):
         if filename is None:
             filename = self.get_active_file()
@@ -234,49 +255,105 @@ class MY_GUI():
             self.cache[filename] = list(self.References_Downloader.get_refs(filename))
         except Exception as e:
             messagebox.showerror("Error",str(e))
-            return self.log(filename + " Analyze Failed ")
-        self.log(filename + " Analyze Successed ")
+            return self.log(filename + " analyze failed ")
+        self.log(filename + " analyze successed ")
         self.refresh()
-    
-    def refresh(self):
-        if getattr(self, "_filename", None) == self.get_active_file():
-            return
-        else:
-            self._filename = self.get_active_file()
+
+
+    def _download(self, filename):
+        RD = self.References_Downloader
+        def get_bib(ref):
+            keys = RD.ref_to_keys(ref)
+            bib = RD.get_bib(*keys)
+            return ref,bib
+        refs = list(RD.get_refs(filename))
+        result = {}
+        def callback(workrequest,res):
+            result[res[0]] = "None" if res[1] is None else res[1].text
+        reqs = threadpool.makeRequests(get_bib, refs, callback)
+        for req in reqs:
+            self.pool.putRequest(req)
+        self.pool.wait()
+        s = "".join(["%s\n%s\n" %(ref,result[ref]) for ref in refs])
+        return s
+
+
+    async def download(self):
+        filename = self.get_active_file()
+        bibs = self._download(filename)
+        self.bib_result[filename] = bibs
         try:
-            self.result_box.delete(0,"end")
+            self.result_box.delete(0, "end")
         except:
             pass
-        self.result_box.insert("end",*self.cache.get(self._filename, []))
-        
-    def clean(self):
-        self.References_Downloader.clean_cache()
-        self.cache.clear()
-        self.log("Cache Cleaned ")
-        self.refresh()
+        self.result_box.insert("end", bibs)
+        self.log("download successed ")
+        return bibs
 
-    def get_str_time(self):
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S ")
-
-    def download(self):
+    def save(self):
         filename = self.get_active_file()
-        print(self.References_Downloader.download(filename))
-        
+        bibs = self.bib_result.get(filename, None)
+        if bibs is None:
+            bibs = self.download()
+
 
     def remove(self):
         index = self.files_box.curselection()
         if index:
             filename = self.files_box.get(index[0])
             self.files_box.delete(index[0])
-            self.log("%s %s Removed " %(self.get_str_time(),filename))
+            self.log(filename + " removed ")
         self.refresh()
-    
-    def save(self):
-        pass
-    
+
+
+    def clean(self):
+        self.References_Downloader.clean_cache()
+        self.cache.clear()
+        self.bib_result.clear()
+        self.log("cache Cleaned ")
+        self.refresh()
+
+
     def log(self,string: str):
         self.log_box.insert("end", self.get_str_time()+string)
         self.log_box.yview_moveto(1)
+    
+    def get_str_time(self):
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S ")
+
+
+    def refresh(self):
+        if getattr(self, "_filename", None) == self.get_active_file():
+            return
+        else:
+            self._filename = self.get_active_file()
+        try:
+            self.references_box.delete(0, "end")
+        except:
+            pass
+        try:
+            self.result_box.delete(0, "end")
+        except:
+            pass
+        self.references_box.insert("end",*self.cache.get(self._filename, []))
+        self.result_box.insert("end", self.bib_result.get(self._filename, ""))
+
+
+    def switch(self):
+        if self.current_show == self.frame_references:
+            show = self.frame_result
+            show_label = self.result_label
+            current_show_label = self.references_label
+        else:
+            show = self.frame_references
+            show_label = self.references_label
+            current_show_label = self.result_label
+        show.place(relx=0.45 ,rely=0.03, relheight=0.96, relwidth=0.54)
+        show_label.place(relx=0.45, y=0)
+        current_show_label.place_forget()
+        self.current_show.place_forget()
+        self.current_show = show
+
 
     def run(self):
         self.window.mainloop()
