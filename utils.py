@@ -64,7 +64,6 @@ class ReferencesDownloader:
             for ref in self.refs_dict[filename]:
                 yield ref
             return
-
         self.refs = self._get_refs(filename, password, page_numbers,maxpages, caching, laparams)
         self.modify_refs()
         if not self.refs:
@@ -79,33 +78,42 @@ class ReferencesDownloader:
             self.refs[i] = re.sub(r".[0-9,， ]+$",".",ref)
     
     
-    def refs_to_keys(self):
+    def refs_to_keys(self,*refs):
         keys_list = []
-        for ref in self.refs:
+        for ref in refs:
             keys_list.append([i.strip() for i in re.sub(r"^\[[0-9]+]", "", ref).strip(' .').split('.')])
         return keys_list     
     
     def get_bib(self, *keywords):
         keywords = [key.replace(" ","+") for key in keywords]
         response = requests.get(self.api_url.format('+'.join(keywords)))
-        print(response.text)
+        if response.text:
+                return response
         keywords.pop()
         response = requests.get(self.api_url.format('+'.join(keywords)))
-        print(response.text)
+        if response.text:
+                return response
         keywords = "+".join(keywords).split("+")
         while True:
-            keywords.pop()
+            if keywords:
+                keywords.pop()
+            else:
+                return
             response = requests.get(self.api_url.format('+'.join(keywords)))
-            print(response.text)
             if response.text:
-                break
+                return response
             
             
-    # def download(self, filename):
-    #     refs = self.get_refs(filename)
-    #     for ref in refs:
-    #         keys = 
-    
+    def download(self, filename):
+        keys_list = self.refs_to_keys(*self.get_refs(filename))
+        result = []
+        for keys in keys_list:
+            response = self.get_bib(*keys)
+            result.append(b"None" if response is None else response.content)
+        s = b""
+        for ref,res in zip(self.get_refs(filename), result):
+            s += b"%s\n%s\n" %(ref,res)
+        return s
     
     def clean_cache(self):
         self.refs_dict.clear()
@@ -154,21 +162,20 @@ class MY_GUI():
         self.log_scroll_bar_y = tk.Scrollbar(self.frame_log, orient="vertical", command=self.log_box.yview)
         self.log_scroll_bar_y.place(relx=0.95, rely=0, relheight=1, relwidth=0.05)
         self.log_box.config(yscrollcommand=self.log_scroll_bar_y.set)
-        # 结果
-        self.result_label = tk.Label(self.window, text="Result")
-        self.result_label.place(relx=0.45, y=0)
-        self.frame_result = tk.Frame(self.window)
-        self.frame_result.place(relx=0.45 ,rely=0.03, relheight=0.96, relwidth=0.54)
-        self.result_box = tk.Listbox(self.frame_result, selectmode="single")
-        self.result_box.place(relx=0 ,rely=0, relheight=0.97, relwidth=0.97)
-        self.result_scroll_bar_x = tk.Scrollbar(self.frame_result, orient="horizontal", command=self.result_box.xview)
-        self.result_scroll_bar_x.place(relx=0, rely=0.97, relheight=0.03, relwidth=1)
-        self.result_box.config(xscrollcommand=self.result_scroll_bar_x.set)
-        self.result_scroll_bar_y = tk.Scrollbar(self.frame_result, orient="vertical", command=self.result_box.yview)
-        self.result_scroll_bar_y.place(relx=0.97, rely=0, relheight=1, relwidth=0.03)
-        self.result_box.config(yscrollcommand=self.result_scroll_bar_y.set)
-        
-        
+        # 参考文献
+        self.references_label = tk.Label(self.window, text="References")
+        self.references_label.place(relx=0.45, y=0)
+        self.frame_references = tk.Frame(self.window)
+        self.frame_references.place(relx=0.45 ,rely=0.03, relheight=0.96, relwidth=0.54)
+        self.references_box = tk.Listbox(self.frame_references, selectmode="single")
+        self.references_box.place(relx=0 ,rely=0, relheight=0.97, relwidth=0.97)
+        self.references_scroll_bar_x = tk.Scrollbar(self.frame_references, orient="horizontal", command=self.references_box.xview)
+        self.references_scroll_bar_x.place(relx=0, rely=0.97, relheight=0.03, relwidth=1)
+        self.references_box.config(xscrollcommand=self.references_scroll_bar_x.set)
+        self.references_scroll_bar_y = tk.Scrollbar(self.frame_references, orient="vertical", command=self.references_box.yview)
+        self.references_scroll_bar_y.place(relx=0.97, rely=0, relheight=1, relwidth=0.03)
+        self.references_box.config(yscrollcommand=self.references_scroll_bar_y.set)
+    
         # 功能按钮
         self.analyze_button = tk.Button(self.window, text="Analyze", width=10, command=self.analyze)
         self.analyze_button.place(relx=0.36, rely=0.1, relwidth=0.08)
@@ -252,13 +259,9 @@ class MY_GUI():
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S ")
 
     def download(self):
-        keys = self.References_Downloader.refs_to_keys()
-        self.References_Downloader.get_bib(*keys[1])
-        # import random
-        # if random.random()<0.5:
-        #     self.result_box.place_forget()
-        # else:
-        #     self.result_box.place(relx=0 ,rely=0, relheight=0.97, relwidth=0.97)
+        filename = self.get_active_file()
+        print(self.References_Downloader.download(filename))
+        
 
     def remove(self):
         index = self.files_box.curselection()
