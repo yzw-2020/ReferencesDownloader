@@ -95,7 +95,8 @@ class ReferencesDownloader:
 
 
     def get_bib(self, *keywords):
-        keywords = [re.sub(r"and", " ", key) for key in keywords]
+        keywords = list(keywords)
+        # keywords[0] = re.sub(r"and", " ", keywords[0])
         keywords = [re.sub(r" +", "+", key) for key in keywords]
         response = requests.get(self.api_url.format('+'.join(keywords)))
         if response.text and response.status_code == 200:
@@ -223,18 +224,31 @@ class MY_GUI():
 
 
     def help(self):
-        msg = "help"
+        msg = """
+        File: Open File 打开单个文件
+        File: Open Files 打开多个文件
+        File: Exit 退出程序
+        Help: 显示帮助信息
+        Analyze: 解析选中文件, 并在右侧显示
+        Analyze All: 解析所有文件, 将选中的文件显示在右侧
+        Clean: 清除缓存, 下次分析、下载时将重新进行
+        Download: 根据解析出来的结果, 下载对应论文的bib格式数据
+        Remove: 将打开的文件关掉，右侧清空
+        Save: 将下载的数据保存到某个文件
+        Switch: 切换显示论文中的参考文献或下载得到的数据
+        
+        """
         messagebox.showinfo(title="Help", message=msg)
 
 
     def open_file(self):
-        file = filedialog.askopenfilename()
+        file = filedialog.askopenfilename(filetypes=[("PDF","pdf")])
         if file and file not in self.files_box.get(0,"end"):
             self.files_box.insert("end", file)
 
 
     def open_files(self):
-        files = filedialog.askopenfilenames()
+        files = filedialog.askopenfilenames(filetypes=[("PDF","pdf")])
         for file in files:
             if file not in self.files_box.get(0,"end"):
                 self.files_box.insert("end", file)
@@ -305,10 +319,13 @@ class MY_GUI():
 
     def save(self):
         filename = self.get_active_file()
+        if not filename:
+            return messagebox.showinfo("tip", "no file selected")
         bibs = self.bib_result.get(filename, None)
         if bibs is None:
-            return messagebox.showinfo("tip", "没有下载bib")
-        file = filedialog.asksaveasfilename()
+            return messagebox.showinfo("tip", "haven't download")
+        savename = re.search(r"/*.", filename).group()[1:] + 'txt'
+        file = filedialog.asksaveasfilename(initialdir=".", initialfile=savename,filetypes=[("all","*")])
         with open(file,"w",encoding="utf-8") as f:
             f.write(bibs)
         self.log("save as "+file+" success")            
@@ -349,7 +366,7 @@ class MY_GUI():
         except:
             pass
         try:
-            self.result_box.delete(0, "end")
+            self.result_box.delete(0.0,"end")
         except:
             pass
         self.references_box.insert("end",*self.cache.get(self._filename, []))
