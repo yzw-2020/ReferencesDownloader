@@ -95,7 +95,7 @@ class ReferencesDownloader:
 
 
     def get_bib(self, *keywords):
-        keywords = [re.sub(r" +", "+", key) for key in keywords]
+        keywords = [re.sub(r"and", " ", key).sub(r" +", "+", key) for key in keywords]
         response = requests.get(self.api_url.format('+'.join(keywords)))
         if response.text and response.status_code == 200:
                 return response.text
@@ -106,7 +106,8 @@ class ReferencesDownloader:
         keywords = "+".join(keywords).split("+")
         while True:
             if keywords:
-                keywords.pop()
+                for i in range(len(keywords)//10+1):
+                    keywords.pop()
             else:
                 return
             if len(keywords)<4:
@@ -307,7 +308,7 @@ class MY_GUI():
         if bibs is None:
             return messagebox.showinfo("tip", "没有下载bib")
         file = filedialog.asksaveasfilename()
-        with open(file,"w") as f:
+        with open(file,"w",encoding="utf-8") as f:
             f.write(bibs)
         self.log("save as "+file+" success")            
 
